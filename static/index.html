@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>URL Shortener</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body {
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .container {
+    width: 100%;
+    max-width: 480px;
+  }
+  h1 {
+    font-size: 1.8rem;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+  .subtitle {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.9rem;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+    border: 1px solid #334155;
+  }
+  .card h2 {
+    font-size: 1rem;
+    margin-bottom: 12px;
+    color: #cbd5e1;
+  }
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-size: 0.95rem;
+    margin-bottom: 10px;
+    outline: none;
+  }
+  input:focus { border-color: #6366f1; }
+  button {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    background: #6366f1;
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  button:hover { background: #4f46e5; }
+  button:disabled { background: #475569; cursor: not-allowed; }
+  .result {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    font-size: 0.9rem;
+    word-break: break-all;
+    display: none;
+  }
+  .result.show { display: block; }
+  .result a { color: #818cf8; text-decoration: none; font-weight: 600; }
+  .result a:hover { text-decoration: underline; }
+  .error { color: #f87171; }
+  .stats-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #334155;
+    font-size: 0.9rem;
+  }
+  .stats-row:last-child { border-bottom: none; }
+  .stats-row span:first-child { color: #94a3b8; }
+  .auth-status {
+    text-align: center;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    margin-bottom: 16px;
+  }
+  .auth-status.logged-in { color: #4ade80; }
+  .tab-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .tab-toggle button {
+    background: #334155;
+    flex: 1;
+  }
+  .tab-toggle button.active {
+    background: #6366f1;
+  }
+  .auth-form { display: none; }
+  .auth-form.show { display: block; }
+  .copy-btn {
+    background: #334155;
+    margin-top: 8px;
+    padding: 8px;
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🔗 URL Shortener</h1>
+  <p class="subtitle">Shorten, track, and manage your links</p>
+
+  <div id="authStatus" class="auth-status">Not logged in</div>
+
+  <!-- AUTH CARD -->
+  <div class="card" id="authCard">
+    <div class="tab-toggle">
+      <button id="loginTab" class="active" onclick="switchTab('login')">Login</button>
+      <button id="signupTab" onclick="switchTab('signup')">Sign Up</button>
+    </div>
+
+    <div id="loginForm" class="auth-form show">
+      <input type="email" id="loginEmail" placeholder="Email" />
+      <input type="password" id="loginPassword" placeholder="Password" />
+      <button onclick="login()">Login</button>
+    </div>
+
+    <div id="signupForm" class="auth-form">
+      <input type="email" id="signupEmail" placeholder="Email" />
+      <input type="password" id="signupPassword" placeholder="Password" />
+      <button onclick="signup()">Sign Up</button>
+    </div>
+
+    <div id="authResult" class="result"></div>
+  </div>
+
+  <!-- SHORTEN CARD -->
+  <div class="card">
+    <h2>Shorten a URL</h2>
+    <input type="url" id="urlInput" placeholder="https://example.com/very/long/url" />
+    <button onclick="shortenUrl()" id="shortenBtn">Shorten</button>
+    <div id="shortenResult" class="result"></div>
+  </div>
+
+  <!-- STATS CARD -->
+  <div class="card">
+    <h2>Check Stats</h2>
+    <input type="text" id="codeInput" placeholder="Short code (e.g. a1b2c3d4)" />
+    <button onclick="getStats()">Get Stats</button>
+    <div id="statsResult" class="result"></div>
+  </div>
+
+  <!-- MY URLS CARD -->
+  <div class="card">
+    <h2>My URLs</h2>
+    <button onclick="getMyUrls()">Refresh My URLs</button>
+    <div id="myUrlsResult" class="result"></div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = window.location.origin;
+
+  function getToken() {
+    return sessionStorage.getItem('token');
+  }
+
+  function setToken(token) {
+    sessionStorage.setItem('token', token);
+    updateAuthStatus();
+  }
+
+  function logout() {
+    sessionStorage.removeItem('token');
+    updateAuthStatus();
+  }
+
+  function updateAuthStatus() {
+    const token = getToken();
+    const el = document.getElementById('authStatus');
+    if (token) {
+      el.textContent = '✅ Logged in';
+      el.classList.add('logged-in');
+    } else {
+      el.textContent = 'Not logged in';
+      el.classList.remove('logged-in');
+    }
+  }
+
+  function switchTab(tab) {
+    document.getElementById('loginTab').classList.toggle('active', tab === 'login');
+    document.getElementById('signupTab').classList.toggle('active', tab === 'signup');
+    document.getElementById('loginForm').classList.toggle('show', tab === 'login');
+    document.getElementById('signupForm').classList.toggle('show', tab === 'signup');
+  }
+
+  function showResult(elId, html, isError = false) {
+    const el = document.getElementById(elId);
+    el.innerHTML = html;
+    el.classList.add('show');
+    el.classList.toggle('error', isError);
+  }
+
+  async function signup() {
+    const email = document.getElementById('signupEmail').value;
+    const password = document.getElementById('signupPassword').value;
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Signup failed');
+      showResult('authResult', '✅ Account created! Now log in.');
+      switchTab('login');
+    } catch (err) {
+      showResult('authResult', '❌ ' + err.message, true);
+    }
+  }
+
+  async function login() {
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+
+    try {
+      const formData = new URLSearchParams();
+      formData.append('username', email);
+      formData.append('password', password);
+
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Login failed');
+      setToken(data.access_token);
+      showResult('authResult', '✅ Logged in successfully!');
+    } catch (err) {
+      showResult('authResult', '❌ ' + err.message, true);
+    }
+  }
+
+  async function shortenUrl() {
+    const url = document.getElementById('urlInput').value;
+    const token = getToken();
+
+    if (!url) {
+      showResult('shortenResult', '❌ Please enter a URL', true);
+      return;
+    }
+    if (!token) {
+      showResult('shortenResult', '❌ Please login first', true);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/shorten`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to shorten');
+
+      showResult('shortenResult', `
+        Short URL: <a href="${data.short_url}" target="_blank">${data.short_url}</a>
+        <button class="copy-btn" onclick="navigator.clipboard.writeText('${data.short_url}')">Copy</button>
+      `);
+    } catch (err) {
+      showResult('shortenResult', '❌ ' + err.message, true);
+    }
+  }
+
+  async function getStats() {
+    const code = document.getElementById('codeInput').value.trim();
+    if (!code) {
+      showResult('statsResult', '❌ Enter a short code', true);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/stats/${code}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Not found');
+
+      showResult('statsResult', `
+        <div class="stats-row"><span>Short Code</span><span>${data.short_code}</span></div>
+        <div class="stats-row"><span>Original URL</span><span style="max-width:60%; text-align:right;">${data.url}</span></div>
+        <div class="stats-row"><span>Clicks</span><span>${data.clicks}</span></div>
+        <div class="stats-row"><span>Created</span><span>${new Date(data.created_at).toLocaleString()}</span></div>
+      `);
+    } catch (err) {
+      showResult('statsResult', '❌ ' + err.message, true);
+    }
+  }
+
+  async function getMyUrls() {
+    const token = getToken();
+    if (!token) {
+      showResult('myUrlsResult', '❌ Please login first', true);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/my-urls`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to fetch');
+
+      if (data.length === 0) {
+        showResult('myUrlsResult', 'No URLs yet. Shorten one above!');
+        return;
+      }
+
+      const rows = data.map(u => `
+        <div class="stats-row">
+          <span><a href="/${u.short_code}" target="_blank" style="color:#818cf8;">/${u.short_code}</a></span>
+          <span>${u.clicks} clicks</span>
+        </div>
+      `).join('');
+
+      showResult('myUrlsResult', rows);
+    } catch (err) {
+      showResult('myUrlsResult', '❌ ' + err.message, true);
+    }
+  }
+
+  updateAuthStatus();
+</script>
+</body>
+</html>
