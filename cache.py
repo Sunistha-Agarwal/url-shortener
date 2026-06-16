@@ -1,10 +1,10 @@
 import redis
 from database import SessionLocal
 from models import URL
-from config import REDIS_HOST, REDIS_PORT
+from config import REDIS_URL
 
 
-client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
 def get_cached_url(short_code: str) -> str|None:
     return client.get(short_code)
